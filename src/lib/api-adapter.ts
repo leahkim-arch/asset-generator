@@ -15,7 +15,7 @@ export class AacApiAdapter implements ApiAdapter {
       body: JSON.stringify({
         prompt: request.prompt,
         negativePrompt: request.negativePrompt,
-        size: `${request.width || 1024}x${request.height || 1024}`,
+        model: request.model || "imagen",
       }),
     });
 
@@ -30,6 +30,8 @@ export class AacApiAdapter implements ApiAdapter {
   async analyzeImage(_imageUrl: string): Promise<AnalysisResult> {
     return {
       analyzedStyle: "",
+      imagenPromptPrefix: "sticker, high quality, clean",
+      imagenNegativeHints: "",
       keywords: ["sticker", "character", "colorful"],
       mood: "playful",
       colors: ["#FF6B6B", "#4ECDC4", "#45B7D1"],

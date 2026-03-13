@@ -16,7 +16,7 @@ import { ItemsSection } from "@/components/create/ItemsSection";
 import { GenerationPreview } from "@/components/create/GenerationPreview";
 import { useAssetProject } from "@/hooks/useAssetProject";
 import { getApiAdapter } from "@/lib/api-adapter";
-import { GRID_COUNTS } from "@/types";
+import { GRID_COUNTS, GENERATION_MODELS, type GenerationModel } from "@/types";
 
 export default function CreatePage() {
   const {
@@ -40,6 +40,9 @@ export default function CreatePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzedStyle, setAnalyzedStyle] = useState<string>("");
+  const [imagenPromptPrefix, setImagenPromptPrefix] = useState<string>("");
+  const [imagenNegativeHints, setImagenNegativeHints] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<GenerationModel>("imagen");
 
   const handleSpecFileChange = useCallback(
     async (file: File | null) => {
@@ -57,6 +60,12 @@ export default function CreatePage() {
 
           if (result.analyzedStyle) {
             setAnalyzedStyle(result.analyzedStyle);
+          }
+          if (result.imagenPromptPrefix) {
+            setImagenPromptPrefix(result.imagenPromptPrefix);
+          }
+          if (result.imagenNegativeHints) {
+            setImagenNegativeHints(result.imagenNegativeHints);
           }
           if (result.suggestedStylePrompt) {
             updateStyle({ stylePrompt: result.suggestedStylePrompt });
@@ -98,6 +107,12 @@ export default function CreatePage() {
           if (result.analyzedStyle) {
             setAnalyzedStyle(result.analyzedStyle);
           }
+          if (result.imagenPromptPrefix) {
+            setImagenPromptPrefix(result.imagenPromptPrefix);
+          }
+          if (result.imagenNegativeHints) {
+            setImagenNegativeHints(result.imagenNegativeHints);
+          }
           if (result.suggestedStylePrompt) {
             updateStyle({ stylePrompt: result.suggestedStylePrompt });
           }
@@ -112,34 +127,65 @@ export default function CreatePage() {
   );
 
   const buildSingleAssetPrompt = (itemLabel: string): string => {
+    const modelInfo = GENERATION_MODELS[selectedModel];
+    if (modelInfo.apiType === "imagen") {
+      return buildImagenPrompt(itemLabel);
+    }
+    return buildGeminiPrompt(itemLabel);
+  };
+
+  const buildImagenPrompt = (itemLabel: string): string => {
+    const MAX_PROMPT_LENGTH = 400;
     const parts: string[] = [];
 
-    // PRIORITY 1: Analyzed style from planning doc / reference images
+    if (imagenPromptPrefix) {
+      parts.push(imagenPromptPrefix);
+    } else if (project.style.stylePrompt) {
+      parts.push(project.style.stylePrompt.slice(0, 120));
+    }
+
+    parts.push(`single ${itemLabel} sticker, centered, solid white background, isolated object`);
+
+    const extras: string[] = [];
+    if (project.style.material) extras.push(project.style.material);
+    if (project.style.lighting) extras.push(project.style.lighting);
+    if (project.style.renderType) extras.push(project.style.renderType);
+    if (project.style.outline && project.style.outline !== "none") extras.push(`${project.style.outline} outline`);
+    if (project.style.palette.length > 0) extras.push(project.style.palette.join(", "));
+    if (extras.length > 0) parts.push(extras.join(", "));
+
+    let prompt = parts.join(", ");
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      prompt = prompt.slice(0, MAX_PROMPT_LENGTH - 3) + "...";
+    }
+    return prompt;
+  };
+
+  const buildGeminiPrompt = (itemLabel: string): string => {
+    const parts: string[] = [];
+
+    parts.push(`Create a single "${itemLabel}" sticker asset image.`);
+    parts.push("The sticker must be centered on a pure solid white background with no other objects.");
+
     if (analyzedStyle) {
-      parts.push(`STYLE REFERENCE (follow this exactly): ${analyzedStyle}`);
+      parts.push(`Follow this EXACT visual style: ${analyzedStyle}`);
+    } else if (project.style.stylePrompt) {
+      parts.push(`Style: ${project.style.stylePrompt}`);
     }
 
-    parts.push(
-      `Subject: A single "${itemLabel}" asset, centered on a pure solid white background`
-    );
-    parts.push("Only one object, no other elements, clean isolated asset, plain white background, no texture, no gradient, no pattern");
-
-    // PRIORITY 2: User's style prompt (secondary to analyzed style)
-    if (project.style.stylePrompt) {
-      parts.push(`Additional style notes: ${project.style.stylePrompt}`);
+    const styleDetails: string[] = [];
+    if (project.style.material) styleDetails.push(`${project.style.material} material`);
+    if (project.style.lighting) styleDetails.push(`${project.style.lighting} lighting`);
+    if (project.style.renderType) styleDetails.push(`${project.style.renderType} render style`);
+    if (project.style.outline && project.style.outline !== "none") styleDetails.push(`${project.style.outline} outline`);
+    if (project.style.palette.length > 0) styleDetails.push(`color palette: ${project.style.palette.join(", ")}`);
+    if (styleDetails.length > 0) {
+      parts.push(`Additional details: ${styleDetails.join(", ")}.`);
     }
 
-    if (project.style.material) parts.push(`${project.style.material} material`);
-    if (project.style.lighting) parts.push(`${project.style.lighting} lighting`);
-    if (project.style.renderType) parts.push(`${project.style.renderType} style`);
-    if (project.style.outline && project.style.outline !== "none") {
-      parts.push(`${project.style.outline} outline`);
-    }
-    if (project.style.palette.length > 0) {
-      parts.push(`color palette: ${project.style.palette.join(", ")}`);
-    }
+    parts.push("Output only the image, no text.");
 
-    return parts.join(". ");
+    return parts.join(" ");
   };
 
   const handleGenerate = useCallback(async () => {
@@ -165,6 +211,12 @@ export default function CreatePage() {
 
         if (result.analyzedStyle && !analyzedStyle) {
           setAnalyzedStyle(result.analyzedStyle);
+        }
+        if (result.imagenPromptPrefix) {
+          setImagenPromptPrefix(result.imagenPromptPrefix);
+        }
+        if (result.imagenNegativeHints) {
+          setImagenNegativeHints(result.imagenNegativeHints);
         }
 
         const suggested = result.suggestedItems.slice(0, targetCount);
@@ -207,6 +259,7 @@ export default function CreatePage() {
       try {
         const prompt = buildSingleAssetPrompt(item.label);
         const negPrompt = [
+          imagenNegativeHints,
           project.style.negativePrompt,
           "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
         ]
@@ -216,6 +269,7 @@ export default function CreatePage() {
         const result = await adapter.generateImage({
           prompt,
           negativePrompt: negPrompt,
+          model: selectedModel,
         });
 
         if (!signal.aborted) {
@@ -230,7 +284,7 @@ export default function CreatePage() {
 
     setIsGenerating(false);
     setStatus(signal.aborted ? "draft" : "completed");
-  }, [project, analyzedStyle, setItems, updateItemStatus, setStatus, getAbortSignal, updateStyle]);
+  }, [project, analyzedStyle, imagenPromptPrefix, imagenNegativeHints, selectedModel, setItems, updateItemStatus, setStatus, getAbortSignal, updateStyle]);
 
   const handleAbort = useCallback(() => {
     abortGeneration();
@@ -249,6 +303,7 @@ export default function CreatePage() {
         const adapter = getApiAdapter();
         const prompt = buildSingleAssetPrompt(item.label);
         const negPrompt = [
+          imagenNegativeHints,
           project.style.negativePrompt,
           "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
         ]
@@ -258,13 +313,14 @@ export default function CreatePage() {
         const result = await adapter.generateImage({
           prompt,
           negativePrompt: negPrompt,
+          model: selectedModel,
         });
         updateItemStatus(id, "done", result.imageUrl);
       } catch {
         updateItemStatus(id, "error");
       }
     },
-    [project, analyzedStyle, updateItemStatus]
+    [project, analyzedStyle, imagenPromptPrefix, imagenNegativeHints, selectedModel, updateItemStatus]
   );
 
   const handleDownloadAll = useCallback(async () => {
@@ -345,6 +401,19 @@ export default function CreatePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value as GenerationModel)}
+              disabled={isGenerating}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+              title="생성 모델 선택"
+            >
+              {Object.entries(GENERATION_MODELS).map(([key, m]) => (
+                <option key={key} value={key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
             {isGenerating && (
               <Button onClick={handleAbort} variant="destructive" size="lg">
                 <Square className="mr-2 h-4 w-4" />

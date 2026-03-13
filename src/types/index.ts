@@ -58,6 +58,8 @@ export type ProjectStatus =
 
 export interface AnalysisResult {
   analyzedStyle: string;
+  imagenPromptPrefix: string;
+  imagenNegativeHints: string;
   keywords: string[];
   mood: string;
   colors: string[];
@@ -66,9 +68,73 @@ export interface AnalysisResult {
   summary: string;
 }
 
+export type GenerationModel =
+  | "imagen"
+  | "gemini-3-pro-image"
+  | "gemini-3.1-flash-image"
+  | "gemini-2.5-flash-image"
+  | "gemini-3.1-pro-chat"
+  | "gemini-3-pro-chat"
+  | "gemini-3-flash-chat";
+
+export type ApiType = "imagen" | "gemini-image" | "gemini-chat";
+
+export interface ModelInfo {
+  id: string;
+  label: string;
+  description: string;
+  apiType: ApiType;
+}
+
+export const GENERATION_MODELS: Record<GenerationModel, ModelInfo> = {
+  "imagen": {
+    id: "vertex_ai/imagen-4.0-ultra-generate-001",
+    label: "Imagen 4 Ultra",
+    description: "키워드 기반, 고해상도 이미지 전용",
+    apiType: "imagen",
+  },
+  "gemini-3-pro-image": {
+    id: "gemini-3-pro-image-preview",
+    label: "Gemini 3 Pro Image",
+    description: "Pro급 이미지 생성, 서술형에 강함",
+    apiType: "gemini-image",
+  },
+  "gemini-3.1-flash-image": {
+    id: "gemini-3.1-flash-image-preview",
+    label: "Gemini 3.1 Flash Image",
+    description: "최신 Flash, 빠르고 저렴",
+    apiType: "gemini-image",
+  },
+  "gemini-2.5-flash-image": {
+    id: "gemini-2.5-flash-image",
+    label: "Gemini 2.5 Flash Image",
+    description: "안정적인 Flash 이미지 모델",
+    apiType: "gemini-image",
+  },
+  "gemini-3.1-pro-chat": {
+    id: "gemini-3.1-pro-preview",
+    label: "Gemini 3.1 Pro (Chat)",
+    description: "최신 Pro, 이미지 출력 지원",
+    apiType: "gemini-chat",
+  },
+  "gemini-3-pro-chat": {
+    id: "gemini-3-pro-preview",
+    label: "Gemini 3 Pro (Chat)",
+    description: "Pro 멀티모달, 이미지 출력 지원",
+    apiType: "gemini-chat",
+  },
+  "gemini-3-flash-chat": {
+    id: "gemini-3-flash-preview",
+    label: "Gemini 3 Flash (Chat)",
+    description: "Flash 멀티모달, 빠르고 저렴",
+    apiType: "gemini-chat",
+  },
+};
+
 export interface ImageGenerationRequest {
   prompt: string;
   negativePrompt?: string;
+  model?: GenerationModel;
   style?: string;
   width?: number;
   height?: number;

@@ -21,15 +21,21 @@ export async function POST(request: NextRequest) {
       content: `You are an expert sticker/asset designer. Your job is to analyze a planning document (기획안) and reference images to extract the EXACT visual style.
 
 You MUST return a JSON object with these fields:
-- analyzedStyle: A VERY detailed style description extracted from the reference/planning images. This is the MOST IMPORTANT field. Describe the exact art technique, line weight, color usage, texture, medium (pen, pencil, digital, etc.), level of detail, and overall aesthetic as precisely as possible. This will be used directly as the primary image generation prompt.
+- analyzedStyle: A VERY detailed style description extracted from the reference/planning images. Describe the exact art technique, line weight, color usage, texture, medium (pen, pencil, digital, etc.), level of detail, and overall aesthetic as precisely as possible. This is displayed to the user.
+- imagenPromptPrefix: A SHORT keyword-only style prompt optimized for Imagen image generation model. MUST be under 80 characters. Use comma-separated keywords only, NO sentences. This MUST faithfully capture the EXACT complexity level of the reference — if the reference is simple/minimal, use words like "simple", "minimal", "basic". If detailed, use "detailed", "intricate". NEVER add complexity that doesn't exist in the reference. Example for simple doodles: "simple black ink doodle, thin lines, minimal detail, hand-drawn sketch". Example for detailed art: "detailed digital illustration, vibrant colors, intricate shading".
 - keywords: array of 5-8 relevant keywords
 - mood: overall mood description  
 - colors: array of 3-5 hex color codes that match the style
 - suggestedItems: array of 25-36 specific sticker item names that fit the theme (each a single distinct object)
-- suggestedStylePrompt: a production-ready style prompt combining the analyzed style with generation best practices
+- imagenNegativeHints: Keywords for what to AVOID to stay faithful to the reference style. Under 80 characters. If reference is simple doodles, include "detailed, realistic, 3d, shading, gradient, complex". If reference is detailed art, include "simple, sketch, rough, unfinished". This prevents the model from drifting away from the intended style.
+- suggestedStylePrompt: a production-ready style prompt combining the analyzed style with generation best practices (displayed in UI for user editing)
 - summary: brief analysis summary
 
-CRITICAL: The analyzedStyle must capture the EXACT visual style from the images. If the images show hand-drawn doodles, say so. If they show 3D renders, say so. Be extremely specific about line weight, color, medium, and aesthetic.
+CRITICAL RULES:
+1. imagenPromptPrefix MUST be under 80 characters, keyword-only, comma-separated. It captures the CORE visual DNA of the reference images.
+2. NEVER inflate the complexity. If the reference is simple sketches with thin lines, the prefix must say "simple" and "minimal". Do NOT add "detailed" or "professional" to simple art.
+3. analyzedStyle is the detailed version for human reading.
+4. If images show hand-drawn doodles, capture that in both fields. If 3D renders, capture that. Be extremely specific about the level of detail and simplicity.
 
 Return ONLY valid JSON, no markdown.`,
     });
@@ -101,6 +107,13 @@ Return ONLY valid JSON, no markdown.`,
         if (!parsed.analyzedStyle && parsed.suggestedStylePrompt) {
           parsed.analyzedStyle = parsed.suggestedStylePrompt;
         }
+        if (!parsed.imagenPromptPrefix) {
+          const fallbackPrefix = (parsed.keywords || []).slice(0, 4).join(", ");
+          parsed.imagenPromptPrefix = fallbackPrefix || "sticker, high quality";
+        }
+        if (!parsed.imagenNegativeHints) {
+          parsed.imagenNegativeHints = "";
+        }
 
         return NextResponse.json(parsed);
       } else {
@@ -135,6 +148,8 @@ function fallbackAnalysis(topic: string) {
 
   return {
     analyzedStyle: "",
+    imagenPromptPrefix: "sticker, high quality, clean",
+    imagenNegativeHints: "",
     keywords: topic ? topic.split(/\s+/).slice(0, 5) : [],
     mood: "playful",
     colors: ["#FF6B6B", "#4ECDC4", "#45B7D1"],
