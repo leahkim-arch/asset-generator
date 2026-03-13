@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
 const API_KEY = process.env.AAC_API_KEY || "";
-const MODEL = "gemini-3-pro-image-preview";
+const MODEL = "vertex_ai/imagen-4.0-ultra-generate-001";
 
 export async function POST(request: NextRequest) {
   try {
