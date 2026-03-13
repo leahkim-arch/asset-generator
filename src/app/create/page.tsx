@@ -120,9 +120,9 @@ export default function CreatePage() {
     }
 
     parts.push(
-      `Subject: A single "${itemLabel}" asset, centered, isolated on transparent background`
+      `Subject: A single "${itemLabel}" asset, centered on a pure solid white background`
     );
-    parts.push("Only one object, no other elements, clean isolated asset");
+    parts.push("Only one object, no other elements, clean isolated asset, plain white background, no texture, no gradient, no pattern");
 
     // PRIORITY 2: User's style prompt (secondary to analyzed style)
     if (project.style.stylePrompt) {
@@ -208,7 +208,7 @@ export default function CreatePage() {
         const prompt = buildSingleAssetPrompt(item.label);
         const negPrompt = [
           project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark",
+          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
         ]
           .filter(Boolean)
           .join(", ");
@@ -250,7 +250,7 @@ export default function CreatePage() {
         const prompt = buildSingleAssetPrompt(item.label);
         const negPrompt = [
           project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark",
+          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
         ]
           .filter(Boolean)
           .join(", ");
