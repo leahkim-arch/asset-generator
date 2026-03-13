@@ -164,11 +164,11 @@ export default function CreatePage() {
   const buildGeminiPrompt = (itemLabel: string): string => {
     const parts: string[] = [];
 
-    parts.push(`Create a single "${itemLabel}" sticker asset image.`);
-    parts.push("The sticker must be centered on a pure solid white background with no other objects.");
+    parts.push(`Generate a SQUARE 1:1 image of "${itemLabel}".`);
+    parts.push("Draw the object directly on a plain solid white background. NO paper, NO card, NO frame, NO surface underneath. The object floats on the white background as if it were a digital icon.");
 
     if (analyzedStyle) {
-      parts.push(`Follow this EXACT visual style: ${analyzedStyle}`);
+      parts.push(`Visual style: ${analyzedStyle}`);
     } else if (project.style.stylePrompt) {
       parts.push(`Style: ${project.style.stylePrompt}`);
     }
@@ -180,10 +180,10 @@ export default function CreatePage() {
     if (project.style.outline && project.style.outline !== "none") styleDetails.push(`${project.style.outline} outline`);
     if (project.style.palette.length > 0) styleDetails.push(`color palette: ${project.style.palette.join(", ")}`);
     if (styleDetails.length > 0) {
-      parts.push(`Additional details: ${styleDetails.join(", ")}.`);
+      parts.push(`Details: ${styleDetails.join(", ")}.`);
     }
 
-    parts.push("Output only the image, no text.");
+    parts.push("Single object only, centered, square image. No sticker peel, no paper, no shadow, no surface. Output only the image.");
 
     return parts.join(" ");
   };
@@ -261,7 +261,7 @@ export default function CreatePage() {
         const negPrompt = [
           imagenNegativeHints,
           project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
+          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background, paper, card, frame, sticker peel, shadow on surface",
         ]
           .filter(Boolean)
           .join(", ");
@@ -305,7 +305,7 @@ export default function CreatePage() {
         const negPrompt = [
           imagenNegativeHints,
           project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background",
+          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background, paper, card, frame, sticker peel, shadow on surface",
         ]
           .filter(Boolean)
           .join(", ");
@@ -401,19 +401,22 @@ export default function CreatePage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value as GenerationModel)}
-              disabled={isGenerating}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
-              title="생성 모델 선택"
-            >
-              {Object.entries(GENERATION_MODELS).map(([key, m]) => (
-                <option key={key} value={key}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">모델</span>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value as GenerationModel)}
+                disabled={isGenerating}
+                className="h-10 rounded-md border border-input bg-background px-3 pr-8 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                title="생성 모델 선택"
+              >
+                {Object.entries(GENERATION_MODELS).map(([key, m]) => (
+                  <option key={key} value={key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             {isGenerating && (
               <Button onClick={handleAbort} variant="destructive" size="lg">
                 <Square className="mr-2 h-4 w-4" />
@@ -470,10 +473,13 @@ export default function CreatePage() {
 
                 <Separator />
 
-                <StyleSection
-                  style={project.style}
+                <ItemsSection
+                  items={project.items}
+                  grid={project.grid}
                   topic={project.topic}
-                  onStyleChange={updateStyle}
+                  onSetItems={setItems}
+                  onAddItem={addItem}
+                  onRemoveItem={removeItem}
                 />
 
                 <Separator />
@@ -482,13 +488,10 @@ export default function CreatePage() {
 
                 <Separator />
 
-                <ItemsSection
-                  items={project.items}
-                  grid={project.grid}
+                <StyleSection
+                  style={project.style}
                   topic={project.topic}
-                  onSetItems={setItems}
-                  onAddItem={addItem}
-                  onRemoveItem={removeItem}
+                  onStyleChange={updateStyle}
                 />
               </CardContent>
             </Card>

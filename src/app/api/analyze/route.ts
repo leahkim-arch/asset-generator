@@ -94,7 +94,7 @@ Return ONLY valid JSON, no markdown.`,
           model,
           messages,
           temperature: 0.5,
-          max_tokens: 3000,
+          max_tokens: 8000,
         }),
       });
 
@@ -102,7 +102,25 @@ Return ONLY valid JSON, no markdown.`,
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || "";
         const cleaned = content.replace(/```json\n?|\n?```/g, "").trim();
-        const parsed = JSON.parse(cleaned);
+        let parsed;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          const partialMatch = cleaned.match(/"suggestedItems"\s*:\s*\[[\s\S]*?\]/);
+          const styleMatch = cleaned.match(/"analyzedStyle"\s*:\s*"([\s\S]*?)"/);
+          const prefixMatch = cleaned.match(/"imagenPromptPrefix"\s*:\s*"([\s\S]*?)"/);
+          parsed = {
+            analyzedStyle: styleMatch?.[1] || "",
+            imagenPromptPrefix: prefixMatch?.[1] || "",
+            imagenNegativeHints: "",
+            keywords: [],
+            mood: "",
+            colors: [],
+            suggestedItems: partialMatch ? JSON.parse(`{${partialMatch[0]}}`).suggestedItems || [] : [],
+            suggestedStylePrompt: styleMatch?.[1] || "",
+            summary: "Partial parse from truncated response",
+          };
+        }
 
         if (!parsed.analyzedStyle && parsed.suggestedStylePrompt) {
           parsed.analyzedStyle = parsed.suggestedStylePrompt;

@@ -71,13 +71,9 @@ export interface AnalysisResult {
 export type GenerationModel =
   | "imagen"
   | "gemini-3-pro-image"
-  | "gemini-3.1-flash-image"
-  | "gemini-2.5-flash-image"
-  | "gemini-3.1-pro-chat"
-  | "gemini-3-pro-chat"
-  | "gemini-3-flash-chat";
+  | "gemini-3.1-flash-image";
 
-export type ApiType = "imagen" | "gemini-image" | "gemini-chat";
+export type ApiType = "imagen" | "gemini";
 
 export interface ModelInfo {
   id: string;
@@ -97,37 +93,13 @@ export const GENERATION_MODELS: Record<GenerationModel, ModelInfo> = {
     id: "gemini-3-pro-image-preview",
     label: "Gemini 3 Pro Image",
     description: "Pro급 이미지 생성, 서술형에 강함",
-    apiType: "gemini-image",
+    apiType: "gemini",
   },
   "gemini-3.1-flash-image": {
     id: "gemini-3.1-flash-image-preview",
     label: "Gemini 3.1 Flash Image",
     description: "최신 Flash, 빠르고 저렴",
-    apiType: "gemini-image",
-  },
-  "gemini-2.5-flash-image": {
-    id: "gemini-2.5-flash-image",
-    label: "Gemini 2.5 Flash Image",
-    description: "안정적인 Flash 이미지 모델",
-    apiType: "gemini-image",
-  },
-  "gemini-3.1-pro-chat": {
-    id: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro (Chat)",
-    description: "최신 Pro, 이미지 출력 지원",
-    apiType: "gemini-chat",
-  },
-  "gemini-3-pro-chat": {
-    id: "gemini-3-pro-preview",
-    label: "Gemini 3 Pro (Chat)",
-    description: "Pro 멀티모달, 이미지 출력 지원",
-    apiType: "gemini-chat",
-  },
-  "gemini-3-flash-chat": {
-    id: "gemini-3-flash-preview",
-    label: "Gemini 3 Flash (Chat)",
-    description: "Flash 멀티모달, 빠르고 저렴",
-    apiType: "gemini-chat",
+    apiType: "gemini",
   },
 };
 
