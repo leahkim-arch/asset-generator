@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
