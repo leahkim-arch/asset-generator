@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GENERATION_MODELS, type GenerationModel } from "@/types";
 
+export const maxDuration = 60;
+
 const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
 const API_KEY = process.env.AAC_API_KEY || "";
 
@@ -27,8 +29,9 @@ export async function POST(request: NextRequest) {
     }
     return handleGeminiGeneration(modelInfo.id, prompt, negativePrompt);
   } catch (error) {
-    console.error("Generation error:", error);
-    return NextResponse.json({ error: "Generation failed" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Generation error:", message);
+    return NextResponse.json({ error: `Generation failed: ${message}` }, { status: 500 });
   }
 }
 

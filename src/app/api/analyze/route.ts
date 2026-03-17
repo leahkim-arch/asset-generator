@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
 const API_KEY = process.env.AAC_API_KEY || "";
 
