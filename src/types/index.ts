@@ -107,6 +107,7 @@ export interface ImageGenerationRequest {
   prompt: string;
   negativePrompt?: string;
   model?: GenerationModel;
+  referenceImageUrl?: string;
   style?: string;
   width?: number;
   height?: number;

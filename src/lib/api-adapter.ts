@@ -16,6 +16,7 @@ export class AacApiAdapter implements ApiAdapter {
         prompt: request.prompt,
         negativePrompt: request.negativePrompt,
         model: request.model || "imagen",
+        referenceImageUrl: request.referenceImageUrl,
       }),
     });
 

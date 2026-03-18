@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, ArrowLeft, Loader2, Square, Eye } from "lucide-react";
+import { Sparkles, ArrowLeft, Loader2, Square, Eye, Lock, Unlock } from "lucide-react";
 import { TopicSection } from "@/components/create/TopicSection";
 import { ImageUploadSection } from "@/components/create/ImageUploadSection";
 import { StyleSection } from "@/components/create/StyleSection";
@@ -43,6 +43,8 @@ export default function CreatePage() {
   const [imagenPromptPrefix, setImagenPromptPrefix] = useState<string>("");
   const [imagenNegativeHints, setImagenNegativeHints] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<GenerationModel>("imagen");
+  const [styleLockImage, setStyleLockImage] = useState<string | null>(null);
+  const [styleLockEnabled, setStyleLockEnabled] = useState(true);
 
   const handleSpecFileChange = useCallback(
     async (file: File | null) => {
@@ -134,25 +136,39 @@ export default function CreatePage() {
     return buildGeminiPrompt(itemLabel);
   };
 
+  const buildNegativePrompt = (): string => {
+    const core = "multiple objects, collage, text, watermark, blurry, low quality";
+    const background = "paper, card, frame, sticker peel, shadow on surface";
+    const hints = [imagenNegativeHints, project.style.negativePrompt].filter(Boolean).join(", ");
+    return [hints, core, background].filter(Boolean).join(", ");
+  };
+
+  const buildStyleKeywords = (): string => {
+    const details: string[] = [];
+    if (project.style.material) details.push(project.style.material);
+    if (project.style.lighting) details.push(project.style.lighting);
+    if (project.style.renderType) details.push(project.style.renderType);
+    if (project.style.outline && project.style.outline !== "none") details.push(`${project.style.outline} outline`);
+    if (project.style.palette.length > 0) details.push(project.style.palette.join(", "));
+    return details.join(", ");
+  };
+
   const buildImagenPrompt = (itemLabel: string): string => {
-    const MAX_PROMPT_LENGTH = 400;
+    const MAX_PROMPT_LENGTH = 480;
     const parts: string[] = [];
 
     if (imagenPromptPrefix) {
       parts.push(imagenPromptPrefix);
     } else if (project.style.stylePrompt) {
-      parts.push(project.style.stylePrompt.slice(0, 120));
+      parts.push(project.style.stylePrompt.slice(0, 150));
     }
 
-    parts.push(`single ${itemLabel} sticker, centered, solid white background, isolated object`);
+    parts.push(`a single "${itemLabel}" icon, centered composition, solid plain white background, isolated object, clean edges, no overlap`);
 
-    const extras: string[] = [];
-    if (project.style.material) extras.push(project.style.material);
-    if (project.style.lighting) extras.push(project.style.lighting);
-    if (project.style.renderType) extras.push(project.style.renderType);
-    if (project.style.outline && project.style.outline !== "none") extras.push(`${project.style.outline} outline`);
-    if (project.style.palette.length > 0) extras.push(project.style.palette.join(", "));
-    if (extras.length > 0) parts.push(extras.join(", "));
+    const extras = buildStyleKeywords();
+    if (extras) parts.push(extras);
+
+    parts.push("high quality, sharp details, consistent style");
 
     let prompt = parts.join(", ");
     if (prompt.length > MAX_PROMPT_LENGTH) {
@@ -162,30 +178,26 @@ export default function CreatePage() {
   };
 
   const buildGeminiPrompt = (itemLabel: string): string => {
-    const parts: string[] = [];
+    const sections: string[] = [];
 
-    parts.push(`Generate a SQUARE 1:1 image of "${itemLabel}".`);
-    parts.push("Draw the object directly on a plain solid white background. NO paper, NO card, NO frame, NO surface underneath. The object floats on the white background as if it were a digital icon.");
+    sections.push(`Create a single icon of "${itemLabel}".`);
+
+    sections.push("COMPOSITION: The icon must be drawn directly on a plain solid white (#FFFFFF) background. The object is centered with even padding on all sides. There is NOTHING else in the image — no paper, no card, no frame, no surface, no shadow, no border. The object floats on white as a clean digital icon.");
 
     if (analyzedStyle) {
-      parts.push(`Visual style: ${analyzedStyle}`);
+      sections.push(`STYLE (follow this exactly): ${analyzedStyle}`);
     } else if (project.style.stylePrompt) {
-      parts.push(`Style: ${project.style.stylePrompt}`);
+      sections.push(`STYLE: ${project.style.stylePrompt}`);
     }
 
-    const styleDetails: string[] = [];
-    if (project.style.material) styleDetails.push(`${project.style.material} material`);
-    if (project.style.lighting) styleDetails.push(`${project.style.lighting} lighting`);
-    if (project.style.renderType) styleDetails.push(`${project.style.renderType} render style`);
-    if (project.style.outline && project.style.outline !== "none") styleDetails.push(`${project.style.outline} outline`);
-    if (project.style.palette.length > 0) styleDetails.push(`color palette: ${project.style.palette.join(", ")}`);
-    if (styleDetails.length > 0) {
-      parts.push(`Details: ${styleDetails.join(", ")}.`);
+    const extras = buildStyleKeywords();
+    if (extras) {
+      sections.push(`DETAILS: ${extras}.`);
     }
 
-    parts.push("Single object only, centered, square image. No sticker peel, no paper, no shadow, no surface. Output only the image.");
+    sections.push("OUTPUT: Square 1:1 aspect ratio. Single object only. High quality, sharp, clean edges. Output the image directly with no text.");
 
-    return parts.join(" ");
+    return sections.join("\n\n");
   };
 
   const handleGenerate = useCallback(async () => {
@@ -248,6 +260,10 @@ export default function CreatePage() {
     currentItems = currentItems.slice(0, targetCount);
     setItems(currentItems);
 
+    let lockRef: string | null = styleLockImage;
+    const modelInfo = GENERATION_MODELS[selectedModel];
+    const canUseLock = styleLockEnabled && modelInfo.apiType === "gemini";
+
     for (const item of currentItems) {
       if (signal.aborted) {
         updateItemStatus(item.id, "pending");
@@ -258,22 +274,22 @@ export default function CreatePage() {
 
       try {
         const prompt = buildSingleAssetPrompt(item.label);
-        const negPrompt = [
-          imagenNegativeHints,
-          project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background, paper, card, frame, sticker peel, shadow on surface",
-        ]
-          .filter(Boolean)
-          .join(", ");
+        const negPrompt = buildNegativePrompt();
 
         const result = await adapter.generateImage({
           prompt,
           negativePrompt: negPrompt,
           model: selectedModel,
+          referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
         });
 
         if (!signal.aborted) {
           updateItemStatus(item.id, "done", result.imageUrl);
+
+          if (!lockRef && canUseLock && result.imageUrl) {
+            lockRef = result.imageUrl;
+            setStyleLockImage(result.imageUrl);
+          }
         }
       } catch {
         if (!signal.aborted) {
@@ -302,18 +318,15 @@ export default function CreatePage() {
       try {
         const adapter = getApiAdapter();
         const prompt = buildSingleAssetPrompt(item.label);
-        const negPrompt = [
-          imagenNegativeHints,
-          project.style.negativePrompt,
-          "multiple objects, collage, grid, sheet, collection, busy background, text, watermark, transparent background, checkered background, gradient background, paper, card, frame, sticker peel, shadow on surface",
-        ]
-          .filter(Boolean)
-          .join(", ");
+        const negPrompt = buildNegativePrompt();
+        const modelInfo = GENERATION_MODELS[selectedModel];
+        const canUseLock = styleLockEnabled && modelInfo.apiType === "gemini";
 
         const result = await adapter.generateImage({
           prompt,
           negativePrompt: negPrompt,
           model: selectedModel,
+          referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
         });
         updateItemStatus(id, "done", result.imageUrl);
       } catch {
@@ -401,6 +414,20 @@ export default function CreatePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant={styleLockEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setStyleLockEnabled(!styleLockEnabled);
+                if (!styleLockEnabled) setStyleLockImage(null);
+              }}
+              disabled={isGenerating}
+              title={styleLockEnabled ? "스타일 락킹 ON: 첫 이미지 스타일을 나머지에 적용" : "스타일 락킹 OFF"}
+              className="gap-1 text-xs"
+            >
+              {styleLockEnabled ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+              스타일 락
+            </Button>
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground whitespace-nowrap">모델</span>
               <select

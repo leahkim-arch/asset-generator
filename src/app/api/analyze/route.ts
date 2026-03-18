@@ -22,26 +22,34 @@ export async function POST(request: NextRequest) {
 
     messages.push({
       role: "system",
-      content: `You are an expert sticker/asset designer. Your job is to analyze a planning document (기획안) and reference images to extract the EXACT visual style.
+      content: `You are an expert sticker/asset designer. Analyze the planning document and reference images to extract the EXACT visual style for generating a consistent icon set.
 
-You MUST return a JSON object with these fields:
-- analyzedStyle: A VERY detailed style description extracted from the reference/planning images. Describe the exact art technique, line weight, color usage, texture, medium (pen, pencil, digital, etc.), level of detail, and overall aesthetic as precisely as possible. This is displayed to the user.
-- imagenPromptPrefix: A SHORT keyword-only style prompt optimized for Imagen image generation model. MUST be under 80 characters. Use comma-separated keywords only, NO sentences. This MUST faithfully capture the EXACT complexity level of the reference — if the reference is simple/minimal, use words like "simple", "minimal", "basic". If detailed, use "detailed", "intricate". NEVER add complexity that doesn't exist in the reference. Example for simple doodles: "simple black ink doodle, thin lines, minimal detail, hand-drawn sketch". Example for detailed art: "detailed digital illustration, vibrant colors, intricate shading".
-- keywords: array of 5-8 relevant keywords
-- mood: overall mood description  
-- colors: array of 3-5 hex color codes that match the style
-- suggestedItems: array of 25-36 specific sticker item names that fit the theme (each a single distinct object)
-- imagenNegativeHints: Keywords for what to AVOID to stay faithful to the reference style. Under 80 characters. If reference is simple doodles, include "detailed, realistic, 3d, shading, gradient, complex". If reference is detailed art, include "simple, sketch, rough, unfinished". This prevents the model from drifting away from the intended style.
-- suggestedStylePrompt: a production-ready style prompt combining the analyzed style with generation best practices (displayed in UI for user editing)
-- summary: brief analysis summary
+Return a JSON object with these fields:
 
-CRITICAL RULES:
-1. imagenPromptPrefix MUST be under 80 characters, keyword-only, comma-separated. It captures the CORE visual DNA of the reference images.
-2. NEVER inflate the complexity. If the reference is simple sketches with thin lines, the prefix must say "simple" and "minimal". Do NOT add "detailed" or "professional" to simple art.
-3. analyzedStyle is the detailed version for human reading.
-4. If images show hand-drawn doodles, capture that in both fields. If 3D renders, capture that. Be extremely specific about the level of detail and simplicity.
+- analyzedStyle: Detailed style description for the user. Cover: art technique, line weight/style, color palette usage, texture, medium (pen/pencil/digital/3D), level of detail, shading method, overall aesthetic. Be VERY specific — e.g. "thick black outlines (3-4px), flat fills with no gradients, pastel color palette, kawaii cartoon style with rounded shapes and simple expressions."
 
-Return ONLY valid JSON, no markdown.`,
+- imagenPromptPrefix: Under 100 chars, keyword-only, comma-separated. Core visual DNA for Imagen model. Match EXACT complexity of reference. Examples:
+  - Simple doodles → "simple line doodle, thin strokes, minimal, hand-drawn"
+  - Flat vector → "flat vector icon, bold outline, solid colors, clean"
+  - 3D render → "3D rendered icon, soft lighting, glossy material, vibrant"
+  - Kawaii → "kawaii cartoon, thick outline, pastel colors, cute rounded shapes"
+
+- imagenNegativeHints: Under 80 chars. What to AVOID to stay faithful. Examples:
+  - For flat art → "3d, realistic, gradient, photograph, complex shading"
+  - For 3D art → "flat, sketch, rough, line art, hand-drawn"
+
+- keywords: 5-8 relevant style/theme keywords
+- mood: overall mood
+- colors: 3-5 hex codes matching the reference palette
+- suggestedItems: 25-36 specific icon names fitting the theme (single distinct objects each)
+- suggestedStylePrompt: Production-ready prompt combining analyzed style. Include specific technical terms the user can edit.
+- summary: 1-2 sentence analysis summary
+
+RULES:
+1. NEVER inflate complexity. Simple reference = simple output keywords.
+2. Be extremely specific about line weight, fill method, and shading.
+3. suggestedItems should be concrete objects, not abstract concepts.
+4. Return ONLY valid JSON, no markdown fences.`,
     });
 
     const userContent: Array<Record<string, unknown>> = [];

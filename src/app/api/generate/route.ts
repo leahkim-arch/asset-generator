@@ -11,7 +11,7 @@ const API_KEY = process.env.AAC_API_KEY || "";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, negativePrompt, model = "imagen" } = body;
+    const { prompt, negativePrompt, model = "imagen", referenceImageUrl } = body;
 
     if (!prompt) {
       return NextResponse.json({ error: "prompt is required" }, { status: 400 });
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (modelInfo.apiType === "imagen") {
       return handleImagenGeneration(modelInfo.id, prompt, negativePrompt);
     }
-    return handleGeminiGeneration(modelInfo.id, prompt, negativePrompt);
+    return handleGeminiGeneration(modelInfo.id, prompt, negativePrompt, referenceImageUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Generation error:", message);
@@ -76,12 +76,24 @@ async function handleImagenGeneration(modelId: string, prompt: string, negativeP
   return NextResponse.json({ error: "Imagen: unexpected response format" }, { status: 500 });
 }
 
-async function handleGeminiGeneration(modelId: string, prompt: string, negativePrompt?: string) {
-  let fullPrompt = `Generate a SQUARE (1:1) image.\n\n${prompt}`;
+async function handleGeminiGeneration(modelId: string, prompt: string, negativePrompt?: string, referenceImageUrl?: string) {
+  let textPrompt = prompt;
   if (negativePrompt) {
-    fullPrompt += `\n\nDo NOT include: ${negativePrompt}`;
+    textPrompt += `\n\nAVOID: ${negativePrompt}`;
   }
-  fullPrompt += "\n\nCRITICAL: Square 1:1 image. Object drawn directly on plain white background. NO paper, NO card, NO sticker peel, NO frame, NO surface. Output only the image.";
+  textPrompt += "\n\nIMPORTANT: Square 1:1 ratio. Output only the image, no text response.";
+
+  // Build message content - with or without reference image for style locking
+  let messageContent: unknown;
+  if (referenceImageUrl && referenceImageUrl.startsWith("data:")) {
+    textPrompt = `STYLE REFERENCE: The attached image shows the exact visual style to follow. Generate a NEW icon matching this exact same style.\n\n${textPrompt}`;
+    messageContent = [
+      { type: "image_url", image_url: { url: referenceImageUrl } },
+      { type: "text", text: textPrompt },
+    ];
+  } else {
+    messageContent = textPrompt;
+  }
 
   const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
     method: "POST",
@@ -91,8 +103,8 @@ async function handleGeminiGeneration(modelId: string, prompt: string, negativeP
     },
     body: JSON.stringify({
       model: modelId,
-      messages: [{ role: "user", content: fullPrompt }],
-      temperature: 0.8,
+      messages: [{ role: "user", content: messageContent }],
+      temperature: 0.5,
       max_tokens: 4096,
       image_size: "1024x1024",
     }),
