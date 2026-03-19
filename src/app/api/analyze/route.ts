@@ -22,34 +22,36 @@ export async function POST(request: NextRequest) {
 
     messages.push({
       role: "system",
-      content: `You are an expert sticker/asset designer. Analyze the planning document and reference images to extract the EXACT visual style for generating a consistent icon set.
+      content: `You are an expert sticker/asset designer. Analyze the planning document (기획안) and reference images to extract the visual style AND the requested item list.
+
+YOUR #1 PRIORITY: Extract the EXACT items/keywords that are explicitly written in the planning document. The planning document (기획안) contains specific asset requests — these are NOT suggestions, they are REQUIREMENTS. You must read every text in the image carefully, including Korean text.
 
 Return a JSON object with these fields:
 
-- analyzedStyle: Detailed style description for the user. Cover: art technique, line weight/style, color palette usage, texture, medium (pen/pencil/digital/3D), level of detail, shading method, overall aesthetic. Be VERY specific — e.g. "thick black outlines (3-4px), flat fills with no gradients, pastel color palette, kawaii cartoon style with rounded shapes and simple expressions."
+- suggestedItems: CRITICAL FIELD. This MUST follow this priority order:
+  1. FIRST: All items explicitly mentioned/requested in the planning document text (기획안에 적힌 에셋 이름들). Read the document image carefully for any list of items, asset names, or keywords. These go FIRST in the array. If the document says "하트, 풍선, 연필꽃이" then these MUST be the first items.
+  2. SECOND: Items clearly visible in reference images that aren't already listed.
+  3. LAST: Additional items that fit the theme to reach 25-36 total.
+  Mark where document-requested items end by making them the first N items. NEVER skip or replace document-requested items with your own suggestions.
 
-- imagenPromptPrefix: Under 100 chars, keyword-only, comma-separated. Core visual DNA for Imagen model. Match EXACT complexity of reference. Examples:
-  - Simple doodles → "simple line doodle, thin strokes, minimal, hand-drawn"
-  - Flat vector → "flat vector icon, bold outline, solid colors, clean"
-  - 3D render → "3D rendered icon, soft lighting, glossy material, vibrant"
-  - Kawaii → "kawaii cartoon, thick outline, pastel colors, cute rounded shapes"
+- analyzedStyle: Detailed style description. Cover: art technique, line weight/style, color palette, texture, medium, level of detail, shading, overall aesthetic. Be specific.
 
-- imagenNegativeHints: Under 80 chars. What to AVOID to stay faithful. Examples:
-  - For flat art → "3d, realistic, gradient, photograph, complex shading"
-  - For 3D art → "flat, sketch, rough, line art, hand-drawn"
+- imagenPromptPrefix: Under 100 chars, keyword-only, comma-separated. Core visual DNA for Imagen. Match EXACT complexity of reference.
+
+- imagenNegativeHints: Under 80 chars. What to AVOID to stay faithful to reference style.
 
 - keywords: 5-8 relevant style/theme keywords
 - mood: overall mood
 - colors: 3-5 hex codes matching the reference palette
-- suggestedItems: 25-36 specific icon names fitting the theme (single distinct objects each)
-- suggestedStylePrompt: Production-ready prompt combining analyzed style. Include specific technical terms the user can edit.
-- summary: 1-2 sentence analysis summary
+- suggestedStylePrompt: Production-ready style prompt for user editing.
+- summary: 1-2 sentence summary. MUST mention how many items were extracted from the document vs suggested.
 
 RULES:
-1. NEVER inflate complexity. Simple reference = simple output keywords.
-2. Be extremely specific about line weight, fill method, and shading.
-3. suggestedItems should be concrete objects, not abstract concepts.
-4. Return ONLY valid JSON, no markdown fences.`,
+1. READ THE PLANNING DOCUMENT TEXT CAREFULLY. It contains specific Korean text with asset requests. OCR every word.
+2. suggestedItems priority: document-requested > reference-visible > theme-fitting.
+3. NEVER inflate complexity. Simple reference = simple keywords.
+4. suggestedItems must be concrete objects (not abstract concepts).
+5. Return ONLY valid JSON, no markdown fences.`,
     });
 
     const userContent: Array<Record<string, unknown>> = [];
@@ -86,7 +88,7 @@ RULES:
     if (topic) textParts.push(`Theme/Topic: "${topic}"`);
     if (specImage) textParts.push("I've attached the planning document (기획안) image above.");
     if (refImages.length > 0) textParts.push(`I've also attached ${refImages.length} reference image(s).`);
-    textParts.push("Analyze the EXACT visual style from these images and generate appropriate sticker items for this theme.");
+    textParts.push("IMPORTANT: First, carefully read ALL text in the planning document image (OCR). Extract every item/asset name that is explicitly requested. These go first in suggestedItems. Then analyze the visual style and add fitting items to reach 25-36 total.");
 
     userContent.push({ type: "text", text: textParts.join(" ") });
 
