@@ -124,9 +124,14 @@ export function GenerationPreview({
                 <span className="text-xs text-muted-foreground">생성 중...</span>
               </div>
             ) : item.status === "error" ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2">
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-2">
                 <AlertCircle className="h-6 w-6 text-destructive" />
                 <span className="text-xs text-destructive">오류</span>
+                {item.errorMessage && (
+                  <span className="text-[10px] text-destructive/70 text-center line-clamp-2" title={item.errorMessage}>
+                    {item.errorMessage.length > 60 ? item.errorMessage.slice(0, 60) + "..." : item.errorMessage}
+                  </span>
+                )}
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2">

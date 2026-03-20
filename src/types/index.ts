@@ -45,6 +45,7 @@ export interface AssetItem {
   id: string;
   label: string;
   imageUrl?: string;
+  errorMessage?: string;
   status: "pending" | "generating" | "done" | "error";
 }
 

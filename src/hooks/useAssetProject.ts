@@ -100,11 +100,18 @@ export function useAssetProject() {
   }, []);
 
   const updateItemStatus = useCallback(
-    (id: string, status: AssetItem["status"], imageUrl?: string) => {
+    (id: string, status: AssetItem["status"], imageUrl?: string, errorMessage?: string) => {
       setProject((prev) => ({
         ...prev,
         items: prev.items.map((item) =>
-          item.id === id ? { ...item, status, imageUrl: imageUrl ?? item.imageUrl } : item
+          item.id === id
+            ? {
+                ...item,
+                status,
+                imageUrl: imageUrl ?? item.imageUrl,
+                errorMessage: status === "error" ? (errorMessage ?? "생성 실패") : undefined,
+              }
+            : item
         ),
       }));
     },

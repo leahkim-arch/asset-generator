@@ -212,7 +212,6 @@ export default function CreatePage() {
 
     let currentItems = [...project.items];
 
-    // If no items and no analysis done yet, analyze now
     if (currentItems.length === 0) {
       try {
         const result = await adapter.analyzeWithImages(
@@ -276,12 +275,24 @@ export default function CreatePage() {
         const prompt = buildSingleAssetPrompt(item.label);
         const negPrompt = buildNegativePrompt();
 
-        const result = await adapter.generateImage({
-          prompt,
-          negativePrompt: negPrompt,
-          model: selectedModel,
-          referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
-        });
+        let result;
+        try {
+          result = await adapter.generateImage({
+            prompt,
+            negativePrompt: negPrompt,
+            model: selectedModel,
+            referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
+          });
+        } catch (firstErr) {
+          console.warn(`1st attempt failed for "${item.label}", retrying...`, firstErr);
+          await new Promise(r => setTimeout(r, 1500));
+          result = await adapter.generateImage({
+            prompt,
+            negativePrompt: negPrompt,
+            model: selectedModel,
+            referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
+          });
+        }
 
         if (!signal.aborted) {
           updateItemStatus(item.id, "done", result.imageUrl);
@@ -291,9 +302,11 @@ export default function CreatePage() {
             setStyleLockImage(result.imageUrl);
           }
         }
-      } catch {
+      } catch (err) {
         if (!signal.aborted) {
-          updateItemStatus(item.id, "error");
+          const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+          console.error(`Generation failed for "${item.label}":`, msg);
+          updateItemStatus(item.id, "error", undefined, msg);
         }
       }
     }
@@ -322,15 +335,29 @@ export default function CreatePage() {
         const modelInfo = GENERATION_MODELS[selectedModel];
         const canUseLock = styleLockEnabled && modelInfo.apiType === "gemini";
 
-        const result = await adapter.generateImage({
-          prompt,
-          negativePrompt: negPrompt,
-          model: selectedModel,
-          referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
-        });
+        let result;
+        try {
+          result = await adapter.generateImage({
+            prompt,
+            negativePrompt: negPrompt,
+            model: selectedModel,
+            referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
+          });
+        } catch (firstErr) {
+          console.warn(`Regenerate 1st attempt failed for "${item.label}", retrying...`, firstErr);
+          await new Promise(r => setTimeout(r, 1500));
+          result = await adapter.generateImage({
+            prompt,
+            negativePrompt: negPrompt,
+            model: selectedModel,
+            referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
+          });
+        }
         updateItemStatus(id, "done", result.imageUrl);
-      } catch {
-        updateItemStatus(id, "error");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+        console.error(`Regeneration failed for "${item.label}":`, msg);
+        updateItemStatus(id, "error", undefined, msg);
       }
     },
     [project, analyzedStyle, imagenPromptPrefix, imagenNegativeHints, selectedModel, updateItemStatus]
