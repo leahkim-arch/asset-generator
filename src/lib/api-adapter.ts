@@ -5,24 +5,39 @@ import type {
   AnalysisResult,
 } from "@/types";
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`요청 시간 초과 (${Math.round(timeoutMs / 1000)}초)`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class AacApiAdapter implements ApiAdapter {
   async generateImage(
     request: ImageGenerationRequest
   ): Promise<ImageGenerationResponse> {
-    const response = await fetch("/api/generate", {
+    const response = await fetchWithTimeout("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt: request.prompt,
         negativePrompt: request.negativePrompt,
-        model: request.model || "imagen",
+        model: request.model || "gemini-3.1-flash-image",
         referenceImageUrl: request.referenceImageUrl,
       }),
-    });
+    }, 65000);
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || `Generation failed: ${response.status}`);
+      throw new Error(err.error || `Generation failed (${response.status})`);
     }
 
     return response.json();
@@ -60,13 +75,14 @@ export class AacApiAdapter implements ApiAdapter {
       }
     }
 
-    const response = await fetch("/api/analyze", {
+    const response = await fetchWithTimeout("/api/analyze", {
       method: "POST",
       body: fd,
-    });
+    }, 125000);
 
     if (!response.ok) {
-      throw new Error("Analysis failed");
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Analysis failed (${response.status})`);
     }
 
     return response.json();

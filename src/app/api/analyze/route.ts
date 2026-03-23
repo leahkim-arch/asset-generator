@@ -2,10 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
 const API_KEY = process.env.AAC_API_KEY || "";
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 120000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`분석 요청 시간 초과 (${Math.round(timeoutMs / 1000)}초)`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -98,7 +113,7 @@ RULES:
     const model = hasImages ? "gemini-2.5-flash" : "gemini-2.5-flash";
 
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${API_KEY}`,
@@ -110,7 +125,7 @@ RULES:
           temperature: 0.5,
           max_tokens: 8000,
         }),
-      });
+      }, 120000);
 
       if (response.ok) {
         const data = await response.json();
@@ -150,17 +165,19 @@ RULES:
         return NextResponse.json(parsed);
       } else {
         const errText = await response.text();
-        console.error("LLM analysis error:", response.status, errText);
+        console.error("LLM analysis error:", response.status, errText.slice(0, 300));
       }
     } catch (e) {
-      console.error("LLM analysis failed, using fallback:", e);
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      console.error("LLM analysis failed, using fallback:", msg);
     }
 
     return NextResponse.json(fallbackAnalysis(topic));
   } catch (error) {
-    console.error("Analysis error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Analysis error:", msg);
     return NextResponse.json(
-      { error: "Analysis failed" },
+      { error: `Analysis failed: ${msg}` },
       { status: 500 }
     );
   }

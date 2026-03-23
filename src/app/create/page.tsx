@@ -16,7 +16,7 @@ import { ItemsSection } from "@/components/create/ItemsSection";
 import { GenerationPreview } from "@/components/create/GenerationPreview";
 import { useAssetProject } from "@/hooks/useAssetProject";
 import { getApiAdapter } from "@/lib/api-adapter";
-import { GRID_COUNTS, GENERATION_MODELS, type GenerationModel } from "@/types";
+import { GRID_COUNTS, GENERATION_MODELS, type GenerationModel, type ImageGenerationRequest, type ImageGenerationResponse } from "@/types";
 
 export default function CreatePage() {
   const {
@@ -42,7 +42,7 @@ export default function CreatePage() {
   const [analyzedStyle, setAnalyzedStyle] = useState<string>("");
   const [imagenPromptPrefix, setImagenPromptPrefix] = useState<string>("");
   const [imagenNegativeHints, setImagenNegativeHints] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<GenerationModel>("imagen");
+  const [selectedModel, setSelectedModel] = useState<GenerationModel>("gemini-3.1-flash-image");
   const [styleLockImage, setStyleLockImage] = useState<string | null>(null);
   const [styleLockEnabled, setStyleLockEnabled] = useState(true);
 
@@ -143,12 +143,21 @@ export default function CreatePage() {
     return [hints, core, background].filter(Boolean).join(", ");
   };
 
+  const outlineToPrompt = (outline: string): string => {
+    if (outline === "thick") return "bold heavy black marker outline, thick 4px stroke weight";
+    if (outline === "thin") return "thin delicate outline, 1px fine stroke";
+    return "";
+  };
+
   const buildStyleKeywords = (): string => {
     const details: string[] = [];
     if (project.style.material) details.push(project.style.material);
     if (project.style.lighting) details.push(project.style.lighting);
     if (project.style.renderType) details.push(project.style.renderType);
-    if (project.style.outline && project.style.outline !== "none") details.push(`${project.style.outline} outline`);
+    const outlineStr = project.style.outline && project.style.outline !== "none"
+      ? outlineToPrompt(project.style.outline)
+      : "";
+    if (outlineStr) details.push(outlineStr);
     if (project.style.palette.length > 0) details.push(project.style.palette.join(", "));
     return details.join(", ");
   };
@@ -163,12 +172,12 @@ export default function CreatePage() {
       parts.push(project.style.stylePrompt.slice(0, 150));
     }
 
-    parts.push(`a single "${itemLabel}" icon, centered composition, solid plain white background, isolated object, clean edges, no overlap`);
+    parts.push(
+      `one large ${itemLabel} icon, close-up view, fills most of the frame, centered on pure white #FFFFFF background, entire canvas is white`
+    );
 
     const extras = buildStyleKeywords();
     if (extras) parts.push(extras);
-
-    parts.push("high quality, sharp details, consistent style");
 
     let prompt = parts.join(", ");
     if (prompt.length > MAX_PROMPT_LENGTH) {
@@ -180,9 +189,15 @@ export default function CreatePage() {
   const buildGeminiPrompt = (itemLabel: string): string => {
     const sections: string[] = [];
 
-    sections.push(`Create a single icon of "${itemLabel}".`);
+    sections.push(`Generate a single "${itemLabel}" icon image.`);
 
-    sections.push("COMPOSITION: The icon must be drawn directly on a plain solid white (#FFFFFF) background. The object is centered with even padding on all sides. There is NOTHING else in the image — no paper, no card, no frame, no surface, no shadow, no border. The object floats on white as a clean digital icon.");
+    sections.push(
+      `SIZE: Draw the object LARGE — it must fill 70-80% of the total canvas. Imagine zooming in close to the object. The object should almost touch the edges with only a thin margin. Do NOT draw it small in the center.`
+    );
+
+    sections.push(
+      `BACKGROUND: Pure solid white (#FFFFFF) must cover the ENTIRE canvas from edge to edge. Every single pixel outside the object must be white. NO gradient, NO gray area, NO two-tone background, NO border of any color.`
+    );
 
     if (analyzedStyle) {
       sections.push(`STYLE (follow this exactly): ${analyzedStyle}`);
@@ -195,10 +210,56 @@ export default function CreatePage() {
       sections.push(`DETAILS: ${extras}.`);
     }
 
-    sections.push("OUTPUT: Square 1:1 aspect ratio. Single object only. High quality, sharp, clean edges. Output the image directly with no text.");
+    sections.push(
+      `CRITICAL RULES:\n- SQUARE 1:1 aspect ratio only\n- Single object only, centered\n- Object must be LARGE (70-80% of canvas)\n- Pure white background edge to edge\n- Draw directly on white — NO paper, NO card, NO frame, NO notebook, NO lined paper, NO surface underneath\n- No cropping, no cutting off the object\n- Output only the image, no text`
+    );
 
     return sections.join("\n\n");
   };
+
+  const MODEL_FALLBACK_ORDER: GenerationModel[] = [
+    "seedream-5",
+    "grok-imagine-pro",
+    "gemini-3.1-flash-image",
+    "imagen-4-fast",
+    "gpt-image-1",
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image",
+    "imagen-4-ultra",
+  ];
+
+  function getFallbackModels(primary: GenerationModel): GenerationModel[] {
+    const others = MODEL_FALLBACK_ORDER.filter((m) => m !== primary);
+    return [primary, ...others];
+  }
+
+  async function retryGenerate(
+    adapter: ReturnType<typeof getApiAdapter>,
+    request: ImageGenerationRequest,
+  ): Promise<ImageGenerationResponse> {
+    const models = getFallbackModels(request.model || "gemini-3.1-flash-image");
+    let lastErr: unknown;
+
+    for (let mi = 0; mi < models.length; mi++) {
+      const model = models[mi];
+      try {
+        return await adapter.generateImage({ ...request, model });
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : "";
+        console.warn(`[${GENERATION_MODELS[model].label}] Failed: ${msg.slice(0, 100)}`);
+
+        if (mi < models.length - 1) {
+          console.warn(`→ Switching to ${GENERATION_MODELS[models[mi + 1]].label}`);
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+      }
+    }
+    throw lastErr || new Error("모든 모델에서 생성 실패. 잠시 후 다시 시도해주세요.");
+  }
+
+  const PARALLEL = 2;
 
   const handleGenerate = useCallback(async () => {
     if (!project.topic.trim() && !project.style.stylePrompt.trim() && !analyzedStyle) return;
@@ -263,52 +324,50 @@ export default function CreatePage() {
     const modelInfo = GENERATION_MODELS[selectedModel];
     const canUseLock = styleLockEnabled && modelInfo.apiType === "gemini";
 
-    for (const item of currentItems) {
-      if (signal.aborted) {
-        updateItemStatus(item.id, "pending");
-        continue;
-      }
+    for (let batchStart = 0; batchStart < currentItems.length; batchStart += PARALLEL) {
+      if (signal.aborted) break;
 
-      updateItemStatus(item.id, "generating");
+      const batch = currentItems.slice(batchStart, batchStart + PARALLEL);
 
-      try {
-        const prompt = buildSingleAssetPrompt(item.label);
-        const negPrompt = buildNegativePrompt();
-
-        let result;
-        try {
-          result = await adapter.generateImage({
-            prompt,
-            negativePrompt: negPrompt,
-            model: selectedModel,
-            referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
-          });
-        } catch (firstErr) {
-          console.warn(`1st attempt failed for "${item.label}", retrying...`, firstErr);
-          await new Promise(r => setTimeout(r, 1500));
-          result = await adapter.generateImage({
-            prompt,
-            negativePrompt: negPrompt,
-            model: selectedModel,
-            referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
-          });
-        }
-
-        if (!signal.aborted) {
-          updateItemStatus(item.id, "done", result.imageUrl);
-
-          if (!lockRef && canUseLock && result.imageUrl) {
-            lockRef = result.imageUrl;
-            setStyleLockImage(result.imageUrl);
+      const results = await Promise.allSettled(
+        batch.map(async (item) => {
+          if (signal.aborted) {
+            updateItemStatus(item.id, "pending");
+            return;
           }
-        }
-      } catch (err) {
-        if (!signal.aborted) {
-          const msg = err instanceof Error ? err.message : "알 수 없는 오류";
-          console.error(`Generation failed for "${item.label}":`, msg);
-          updateItemStatus(item.id, "error", undefined, msg);
-        }
-      }
+
+          updateItemStatus(item.id, "generating");
+
+          try {
+            const prompt = buildSingleAssetPrompt(item.label);
+            const negPrompt = buildNegativePrompt();
+
+            const result = await retryGenerate(adapter, {
+              prompt,
+              negativePrompt: negPrompt,
+              model: selectedModel,
+              referenceImageUrl: canUseLock && lockRef ? lockRef : undefined,
+            });
+
+            if (!signal.aborted) {
+              updateItemStatus(item.id, "done", result.imageUrl);
+
+              if (!lockRef && canUseLock && result.imageUrl) {
+                lockRef = result.imageUrl;
+                setStyleLockImage(result.imageUrl);
+              }
+            }
+          } catch (err) {
+            if (!signal.aborted) {
+              const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+              console.error(`Generation failed for "${item.label}":`, msg);
+              updateItemStatus(item.id, "error", undefined, msg);
+            }
+          }
+        })
+      );
+
+      void results;
     }
 
     setIsGenerating(false);
@@ -335,24 +394,12 @@ export default function CreatePage() {
         const modelInfo = GENERATION_MODELS[selectedModel];
         const canUseLock = styleLockEnabled && modelInfo.apiType === "gemini";
 
-        let result;
-        try {
-          result = await adapter.generateImage({
-            prompt,
-            negativePrompt: negPrompt,
-            model: selectedModel,
-            referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
-          });
-        } catch (firstErr) {
-          console.warn(`Regenerate 1st attempt failed for "${item.label}", retrying...`, firstErr);
-          await new Promise(r => setTimeout(r, 1500));
-          result = await adapter.generateImage({
-            prompt,
-            negativePrompt: negPrompt,
-            model: selectedModel,
-            referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
-          });
-        }
+        const result = await retryGenerate(adapter, {
+          prompt,
+          negativePrompt: negPrompt,
+          model: selectedModel,
+          referenceImageUrl: canUseLock && styleLockImage ? styleLockImage : undefined,
+        });
         updateItemStatus(id, "done", result.imageUrl);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "알 수 없는 오류";
@@ -386,6 +433,8 @@ export default function CreatePage() {
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, 720, 720);
             ctx.drawImage(img, 0, 0, 720, 720);
             canvas.toBlob((b) => resolve(b), "image/png");
           };

@@ -5,18 +5,42 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const API_BASE_URL = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
-const API_KEY = process.env.AAC_API_KEY || "";
+const AAC_API_BASE = process.env.AAC_API_BASE_URL || "https://aac-api.navercorp.com";
+const AAC_API_KEY = process.env.AAC_API_KEY || "";
+const SNOW_API_BASE = process.env.SNOW_API_BASE_URL || "https://litellm-snow.io.naver.com";
+const SNOW_API_KEY = process.env.SNOW_API_KEY || "";
+
+function getApiConfig(apiSource?: string) {
+  if (apiSource === "snow") {
+    return { base: SNOW_API_BASE, key: SNOW_API_KEY || AAC_API_KEY };
+  }
+  return { base: AAC_API_BASE, key: AAC_API_KEY };
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 60000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`요청 시간 초과 (${Math.round(timeoutMs / 1000)}초)`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, negativePrompt, model = "imagen", referenceImageUrl } = body;
+    const { prompt, negativePrompt, model = "gemini-3.1-flash-image", referenceImageUrl } = body;
 
     if (!prompt) {
       return NextResponse.json({ error: "prompt is required" }, { status: 400 });
     }
-    if (!API_KEY) {
+    if (!AAC_API_KEY) {
       return NextResponse.json({ error: "API key is not configured" }, { status: 500 });
     }
 
@@ -26,10 +50,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Unknown model: ${model}` }, { status: 400 });
     }
 
+    const { base, key } = getApiConfig(modelInfo.apiSource);
+
     if (modelInfo.apiType === "imagen") {
-      return handleImagenGeneration(modelInfo.id, prompt, negativePrompt);
+      return handleImagenGeneration(modelInfo.id, prompt, negativePrompt, base, key);
     }
-    return handleGeminiGeneration(modelInfo.id, prompt, negativePrompt, referenceImageUrl);
+    return handleGeminiGeneration(modelInfo.id, prompt, negativePrompt, referenceImageUrl, base, key);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Generation error:", message);
@@ -37,30 +63,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleImagenGeneration(modelId: string, prompt: string, negativePrompt?: string) {
+async function handleImagenGeneration(modelId: string, prompt: string, negativePrompt?: string, apiBase?: string, apiKey?: string) {
+  const base = apiBase || AAC_API_BASE;
+  const key = apiKey || AAC_API_KEY;
+
   const requestBody: Record<string, unknown> = {
     model: modelId,
     prompt,
     n: 1,
-    size: "2048x2048",
   };
+
+  if (modelId === "grok-imagine-image-pro") {
+    // Grok doesn't support size parameter
+  } else if (modelId === "seedream-5-0-260128") {
+    requestBody.size = "2048x2048";
+  } else {
+    requestBody.size = "2048x2048";
+  }
+
   if (negativePrompt) {
     requestBody.negative_prompt = negativePrompt;
   }
 
-  const response = await fetch(`${API_BASE_URL}/v1/images/generations`, {
+  const response = await fetchWithTimeout(`${base}/v1/images/generations`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${API_KEY}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
-  });
+  }, 60000);
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error("Imagen API error:", response.status, errorText);
-    return NextResponse.json({ error: `Imagen API failed: ${response.status}` }, { status: response.status });
+    const snippet = errorText.slice(0, 200);
+    return NextResponse.json({ error: `${modelId} API failed (${response.status}): ${snippet}` }, { status: response.status });
   }
 
   const data = await response.json();
@@ -76,14 +114,16 @@ async function handleImagenGeneration(modelId: string, prompt: string, negativeP
   return NextResponse.json({ error: "Imagen: unexpected response format" }, { status: 500 });
 }
 
-async function handleGeminiGeneration(modelId: string, prompt: string, negativePrompt?: string, referenceImageUrl?: string) {
+async function handleGeminiGeneration(modelId: string, prompt: string, negativePrompt?: string, referenceImageUrl?: string, apiBase?: string, apiKey?: string) {
+  const base = apiBase || AAC_API_BASE;
+  const key = apiKey || AAC_API_KEY;
+
   let textPrompt = prompt;
   if (negativePrompt) {
     textPrompt += `\n\nAVOID: ${negativePrompt}`;
   }
-  textPrompt += "\n\nIMPORTANT: Square 1:1 ratio. Output only the image, no text response.";
+  textPrompt += "\n\nIMPORTANT: SQUARE 1:1 aspect ratio. Output only the image, no text response.";
 
-  // Build message content - with or without reference image for style locking
   let messageContent: unknown;
   if (referenceImageUrl && referenceImageUrl.startsWith("data:")) {
     textPrompt = `STYLE REFERENCE: The attached image shows the exact visual style to follow. Generate a NEW icon matching this exact same style.\n\n${textPrompt}`;
@@ -95,10 +135,10 @@ async function handleGeminiGeneration(modelId: string, prompt: string, negativeP
     messageContent = textPrompt;
   }
 
-  const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
+  const response = await fetchWithTimeout(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${API_KEY}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -108,12 +148,13 @@ async function handleGeminiGeneration(modelId: string, prompt: string, negativeP
       max_tokens: 4096,
       image_size: "1024x1024",
     }),
-  });
+  }, 60000);
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`Gemini API error (${modelId}):`, response.status, errorText);
-    return NextResponse.json({ error: `${modelId} API failed: ${response.status}` }, { status: response.status });
+    const snippet = errorText.slice(0, 200);
+    return NextResponse.json({ error: `${modelId} API failed (${response.status}): ${snippet}` }, { status: response.status });
   }
 
   const data = await response.json();
